@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- maps_v1alpha1_swapmap.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples

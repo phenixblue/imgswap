@@ -1,0 +1,126 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.12.0
+  name: swapmaps.maps.k8s.imgswap.io
+spec:
+  group: maps.k8s.imgswap.io
+  names:
+    categories:
+    - all
+    - imageswap
+    - imgswap
+    - imgswp
+    kind: SwapMap
+    listKind: SwapMapList
+    plural: swapmaps
+    shortNames:
+    - sm
+    singular: swapmap
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: SwapMap is the Schema for the swapmaps API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: SwapMapSpec defines the desired state of SwapMap
+            properties:
+              maps:
+                description: Maps is a list of Swap mappings to control how ImageSwap
+                  operates
+                items:
+                  description: Map defines a single swap map
+                  properties:
+                    name:
+                      default: default
+                      description: Name is the name of the swap map
+                      type: string
+                    noSwap:
+                      description: NoSwap is a boolean that, when true, prevents swapping
+                        of the target image(s)
+                      type: boolean
+                    swapFrom:
+                      description: SwapFrom defines the information to target one
+                        or more images to be swapped
+                      properties:
+                        image:
+                          description: Image is the image to target (e.g. "nginx",
+                            "nginx:latest", "nginx:1.19.6")
+                          type: string
+                        project:
+                          description: Project is the project to target (e.g. "nginx",
+                            "library", "team1/project2")
+                          type: string
+                        registry:
+                          description: Registry is the registry to target (e.g. "docker.io",
+                            "quay.io", "ghcr.io")
+                          type: string
+                      type: object
+                    swapTo:
+                      description: SwapTo defines how the target image(s) should be
+                        swapped
+                      properties:
+                        image:
+                          description: Image is the image to target (e.g. "nginx",
+                            "nginx:latest", "nginx:1.19.6")
+                          type: string
+                        project:
+                          description: Project is the project to target (e.g. "nginx",
+                            "library", "team1/project2")
+                          type: string
+                        registry:
+                          description: Registry is the registry to target (e.g. "docker.io",
+                            "quay.io", "ghcr.io")
+                          type: string
+                      type: object
+                    type:
+                      default: swap
+                      description: Type is the type of swap map (e.g. "default", "swap",
+                        "exact", "replace")
+                      enum:
+                      - default
+                      - swap
+                      - exact
+                      - replace
+                      type: string
+                    wildcards:
+                      description: Wildcards is a list of wildcard strings used to
+                        greedy match target one or more target images
+                      items:
+                        type: string
+                      type: array
+                  required:
+                  - name
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+            required:
+            - maps
+            type: object
+          status:
+            description: SwapMapStatus defines the observed state of SwapMap
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
