@@ -34,7 +34,7 @@ import (
 
 	mapsv1alpha1 "twr.dev/imgswap/api/v1alpha1"
 	"twr.dev/imgswap/internal/controller"
-	"twr.dev/imgswap/internal/mapstore"
+	"twr.dev/imgswap/pkg/mapstore"
 	"twr.dev/imgswap/pkg/webhooks"
 	//+kubebuilder:scaffold:imports
 )

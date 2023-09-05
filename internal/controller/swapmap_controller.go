@@ -25,9 +25,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"internal/mapstore"
-
 	mapsv1alpha1 "twr.dev/imgswap/api/v1alpha1"
+	"twr.dev/imgswap/pkg/mapstore"
 )
 
 // SwapMapReconciler reconciles a SwapMap object
