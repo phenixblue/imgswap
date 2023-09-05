@@ -25,8 +25,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"internal/mapstore"
+
 	mapsv1alpha1 "twr.dev/imgswap/api/v1alpha1"
-	"twr.dev/imgswap/internal/mapstore"
 )
 
 // SwapMapReconciler reconciles a SwapMap object
@@ -72,6 +73,8 @@ func (r *SwapMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 		r.MapStore.AddOrUpdate(mapKey, &mapSpec)
 	}
+
+	fmt.Printf("MapStore: %v", r.MapStore)
 
 	return ctrl.Result{}, nil
 }

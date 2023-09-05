@@ -30,10 +30,12 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	mapsv1alpha1 "twr.dev/imgswap/api/v1alpha1"
 	"twr.dev/imgswap/internal/controller"
 	"twr.dev/imgswap/internal/mapstore"
+	"twr.dev/imgswap/pkg/webhooks"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -102,6 +104,9 @@ func main() {
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
+
+	// Register PodImageSwapper webhook
+	mgr.GetWebhookServer().Register("/pod-imgswap", &webhook.Admission{Handler: &webhooks.PodImageSwapper{Client: mgr.GetClient()}})
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
