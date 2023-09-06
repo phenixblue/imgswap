@@ -1,0 +1,25 @@
+apiVersion: maps.k8s.imgswap.io/v1alpha1
+kind: SwapMap
+metadata:
+  labels:
+    app.kubernetes.io/name: swapmap
+    app.kubernetes.io/instance: swapmap-sample
+    app.kubernetes.io/part-of: imgswap
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: imgswap
+  name: swapmap-sample
+spec:
+  maps:
+    - name: default
+      type: "default"
+      noSwap: true
+    - name: docker-to-internal
+      type: "swap"
+      swapFrom:
+        registry: "docker.io"
+        project: ""
+        image: ""
+      swapTo:
+        registry: "example.com"
+        project: ""
+        image: ""
