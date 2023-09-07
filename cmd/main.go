@@ -31,7 +31,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	corev1 "k8s.io/api/core/v1"
 	mapsv1alpha1 "twr.dev/imgswap/api/v1alpha1"
 	"twr.dev/imgswap/internal/controller"
 	"twr.dev/imgswap/pkg/mapstore"
@@ -49,6 +51,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(mapsv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(corev1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 
 	ImgSwapMapStore = mapstore.NewMapStore()
@@ -89,6 +92,7 @@ func main() {
 		// if you are doing or is intended to do any operation such as perform cleanups
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
+		CertDir: "/tmp/k8s-webhook-server/serving-certs",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -106,7 +110,7 @@ func main() {
 	//+kubebuilder:scaffold:builder
 
 	// Register PodImageSwapper webhook
-	mgr.GetWebhookServer().Register("/pod-imgswap", &webhook.Admission{Handler: &webhooks.PodImageSwapper{Client: mgr.GetClient()}})
+	mgr.GetWebhookServer().Register("/pod-imgswap", &webhook.Admission{Handler: &webhooks.PodImageSwapHandler{Client: mgr.GetClient(), Decoder: admission.NewDecoder(mgr.GetScheme())}})
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")

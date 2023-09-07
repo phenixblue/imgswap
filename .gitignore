@@ -30,4 +30,5 @@ imageswap-webhook
 
 # Temp files/notes
 **/.tmp
+**/tmp
 

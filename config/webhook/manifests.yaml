@@ -1,0 +1,30 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /pod-imgswap
+  failurePolicy: Fail
+  name: pisw.webhooks.imgswap.io
+  rules:
+  - apiGroups:
+    - "*"
+    apiVersions:
+    - "*"
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pods
+  sideEffects: None
+  reinvocationPolicy: IfNeeded
+  namespaceSelector:
+    matchLabels:
+      k8s.twr.io/imageswap: "enabled"
