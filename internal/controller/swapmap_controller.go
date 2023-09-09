@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -74,7 +75,8 @@ func (r *SwapMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		r.MapStore.AddOrUpdate(mapKey, &mapSpec)
 	}
 
-	fmt.Printf("MapStore: %v", r.MapStore)
+	msJSON, _ := json.Marshal(r.MapStore)
+	fmt.Printf("\nMapStore: %v\n", string(msJSON))
 
 	return ctrl.Result{}, nil
 }
@@ -83,5 +85,6 @@ func (r *SwapMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 func (r *SwapMapReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mapsv1alpha1.SwapMap{}).
+		Named("imgswap-controller").
 		Complete(r)
 }

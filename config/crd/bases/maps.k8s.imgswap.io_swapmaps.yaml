@@ -71,6 +71,9 @@ spec:
                           description: Registry is the registry to target (e.g. "docker.io",
                             "quay.io", "ghcr.io")
                           type: string
+                        tag:
+                          description: Tag is the tag to target (e.g. "latest", "1.19.6")
+                          type: string
                       type: object
                     swapTo:
                       description: SwapTo defines how the target image(s) should be
@@ -87,6 +90,9 @@ spec:
                         registry:
                           description: Registry is the registry to target (e.g. "docker.io",
                             "quay.io", "ghcr.io")
+                          type: string
+                        tag:
+                          description: Tag is the tag to target (e.g. "latest", "1.19.6")
                           type: string
                       type: object
                     type:

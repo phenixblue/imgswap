@@ -17,6 +17,11 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
+	"strings"
+
+	"github.com/go-logr/logr"
+	"github.com/google/go-containerregistry/pkg/name"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -34,6 +39,9 @@ type SwapRef struct {
 	// Image is the image to target (e.g. "nginx", "nginx:latest", "nginx:1.19.6")
 	// +kubebuilder:validation:Optional
 	Image string `json:"image"`
+	// Tag is the tag to target (e.g. "latest", "1.19.6")
+	// +kubebuilder:validation:Optional
+	Tag string `json:"tag"`
 }
 
 // Map defines a single swap map
@@ -103,4 +111,118 @@ type SwapMapList struct {
 
 func init() {
 	SchemeBuilder.Register(&SwapMap{}, &SwapMapList{})
+}
+
+// ToString is a method that reads an ImageRef and returns a string representing the image
+func (s *SwapRef) ToString() string {
+	image := ""
+
+	/*
+		if s.Registry != "" {
+			image += s.Registry + "/"
+		}
+		if s.Project != "" {
+			image += s.Project + "/"
+		}
+		if s.Image != "" {
+			image += s.Image
+		}
+		if s.Tag != "" {
+			image += ":" + s.Tag
+		}
+	*/
+
+	if s.Registry != "" {
+		parsedRegistry, err := name.NewRegistry(s.Registry)
+		if err != nil {
+			return ""
+		}
+		image += parsedRegistry.String()
+	}
+
+	if s.Project != "" {
+		parsedProject, err := name.NewRepository(s.Project)
+		if err != nil {
+			return ""
+		}
+		image += "/" + parsedProject.String()
+	}
+
+	if s.Image != "" {
+		parseImage, err := name.NewTag(s.Image)
+		if err != nil {
+			return ""
+		}
+		image += "/" + parseImage.String()
+	}
+
+	if s.Tag != "" {
+		parsedTag, err := name.NewTag(s.Tag)
+		if err != nil {
+			return ""
+		}
+		image += ":" + parsedTag.String()
+	}
+
+	parsedImage, err := name.ParseReference(image)
+	if err != nil {
+		return ""
+	}
+
+	return parsedImage.String()
+}
+
+// GetSwap is a method that processes information from the Map and the given Image string and outputs a swapped image string
+func (m *Map) GetSwap(log logr.Logger, image name.Reference) (string, error) {
+	newImage := ""
+	isLibraryImage := false
+
+	// Check if the image is a library image
+	if m.SwapFrom.Registry == "" && m.SwapFrom.Project == "" {
+		isLibraryImage = true
+		log.V(5).Info("Image is a library image", "image", image.String())
+	}
+
+	// Check if the image is a library image
+	if isLibraryImage {
+		// If the image is a library image, we need to split the image string
+		// into its registry, project, image, and tag components
+		// and then reassemble it with the SwapTo components
+
+		/*
+			// TODO(phenixblue): THis is just to get the code workign for now, we need to actually add proper logic here
+			parsedImage, err := name.ParseReference(m.SwapTo.ToString())
+
+			if err != nil {
+				return "", err
+			}
+			newImage = parsedImage.String()
+		*/
+		newImage = m.SwapTo.ToString()
+	} else {
+		// If the image is not a library image, we can just swap the image
+		// string with the SwapTo components
+
+		/*
+			// TODO(phenixblue): THis is just to get the code workign for now, we need to actually add proper logic here
+			parsedImage, err := name.ParseReference(m.SwapTo.ToString())
+
+			if err != nil {
+				return "", err
+			}
+			newImage = parsedImage.String()
+		*/
+
+		swapFrom := m.SwapFrom.ToString()
+		newImage = m.SwapTo.ToString()
+
+		fmt.Printf("\nOrig Image - inside GetSwap(): %v\n", image.Context().String())
+		fmt.Printf("\nSwapping from -  inside GetSwap(): %v\n", m.SwapFrom.ToString())
+		fmt.Printf("\nSwapping to - inside GetSwap(): %v\n", m.SwapTo.ToString())
+
+		newImage = strings.Replace(image.Context().String(), swapFrom, newImage, 1)
+	}
+
+	return newImage, nil
+
 }

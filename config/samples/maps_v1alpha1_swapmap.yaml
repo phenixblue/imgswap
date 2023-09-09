@@ -19,7 +19,9 @@ spec:
         registry: "docker.io"
         project: ""
         image: ""
+        tag: ""
       swapTo:
         registry: "example.com"
         project: ""
         image: ""
+        tag: ""

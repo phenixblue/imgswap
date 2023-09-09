@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	mapsv1alpha1 "twr.dev/imgswap/api/v1alpha1"
 )
 
@@ -19,25 +20,25 @@ type mapStore interface {
 }
 
 type MapStore struct {
-	maps map[string]*mapsv1alpha1.Map
+	Maps map[string]*mapsv1alpha1.Map `json:"maps"`
 }
 
 func (m *MapStore) New() (*mapsv1alpha1.SwapMapList, error) {
 	return &mapsv1alpha1.SwapMapList{}, nil
 }
 
-func (m *MapStore) Get(name string) (bool, *mapsv1alpha1.Map) {
-	mapSpec, ok := m.maps[name]
-	return ok, mapSpec
+func (m *MapStore) Get(name string) (*mapsv1alpha1.Map, bool) {
+	mapSpec, ok := m.Maps[name]
+	return mapSpec, ok
 }
 
 func (m *MapStore) AddOrUpdate(mapKey string, mapSpec *mapsv1alpha1.Map) error {
-	m.maps[mapKey] = mapSpec
+	m.Maps[mapKey] = mapSpec
 	return nil
 }
 
 func (m *MapStore) Delete(mapName string) error {
-	delete(m.maps, mapName)
+	delete(m.Maps, mapName)
 	return nil
 }
 
@@ -47,12 +48,18 @@ func NewMapStore() *MapStore {
 
 	once.Do(func() {
 		ms = &MapStore{
-			maps: make(map[string]*mapsv1alpha1.Map),
+			Maps: make(map[string]*mapsv1alpha1.Map),
 		}
 	})
 	return ms
 }
 
+// GetMapKey is a method that reads a MapSpec and returns a string representing the image to be used as the key in the MapStore
+// NOTE: We're using the "github.com/google/go-containerregistry/pkg/name" package to parse image strings into a consistent format.
+// This will automatically change "docker.io" to "index.docker.io", insert "/library", etc.
+// This will also validate the image string to ensure it is a valid reference.
+// We should strive to use this for all internal image references.
+// This may cause unintended side-effects, so we should be careful.
 func GetMapKey(mapSpec mapsv1alpha1.Map) (string, error) {
 	mapKey := ""
 
@@ -63,21 +70,26 @@ func GetMapKey(mapSpec mapsv1alpha1.Map) (string, error) {
 		return mapKey, nil
 	}
 
-	if mapSpec.SwapFrom.Registry != "" {
-		mapKey += mapSpec.SwapFrom.Registry
+	// Add Map Type to key if applicable
+	if mapSpec.Type == "default" {
+		if mapSpec.Name == "default" {
+			mapKey += "default"
+		}
 	}
 
-	if mapSpec.SwapFrom.Project != "" {
-		mapKey += "/" + mapSpec.SwapFrom.Project
-	}
-
-	if mapSpec.SwapFrom.Image != "" {
-		mapKey += "/" + mapSpec.SwapFrom.Image
-	}
+	mapKey = mapSpec.SwapFrom.ToString()
 
 	if mapKey == "" {
 		return "", fmt.Errorf("unable to generate map key")
 	} else {
-		return mapKey, nil
+
+		// Verify the final mapKey is a valid reference
+		parsedMapKey, err := name.ParseReference(mapKey)
+		if err != nil {
+			return "", fmt.Errorf("unable to parse map key: %v", err)
+		}
+
+		fmt.Printf("\nMap Key: %v\n", parsedMapKey.String())
+		return parsedMapKey.String(), nil
 	}
 }

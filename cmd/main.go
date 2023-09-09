@@ -44,7 +44,7 @@ import (
 var (
 	scheme          = runtime.NewScheme()
 	setupLog        = ctrl.Log.WithName("setup")
-	ImgSwapMapStore *mapstore.MapStore
+	imgSwapMapStore *mapstore.MapStore
 )
 
 func init() {
@@ -54,7 +54,13 @@ func init() {
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 
-	ImgSwapMapStore = mapstore.NewMapStore()
+	// Initialize MapStore so it can be used across Controllers and Webhooks
+	// NOTE: Only the "imgswap-controller" (swapmap_controller.go) controller
+	// should WRITE to the MapStore. All other controllers and webhooks should
+	// only READ from the MapStore.
+	// If this needs changes, we will need to add a mutex to the MapStore Struct
+	// to initiate WRITE locks when needed.
+	imgSwapMapStore = mapstore.NewMapStore()
 }
 
 func main() {
@@ -102,7 +108,7 @@ func main() {
 	if err = (&controller.SwapMapReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		MapStore: ImgSwapMapStore,
+		MapStore: imgSwapMapStore,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "SwapMap")
 		os.Exit(1)
@@ -110,7 +116,13 @@ func main() {
 	//+kubebuilder:scaffold:builder
 
 	// Register PodImageSwapper webhook
-	mgr.GetWebhookServer().Register("/pod-imgswap", &webhook.Admission{Handler: &webhooks.PodImageSwapHandler{Client: mgr.GetClient(), Decoder: admission.NewDecoder(mgr.GetScheme())}})
+	mgr.GetWebhookServer().Register("/pod-imgswap", &webhook.Admission{
+		Handler: &webhooks.PodImageSwapHandler{
+			Client:   mgr.GetClient(),
+			Decoder:  admission.NewDecoder(mgr.GetScheme()),
+			MapStore: imgSwapMapStore,
+		},
+	})
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")

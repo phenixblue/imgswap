@@ -6,19 +6,29 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"twr.dev/imgswap/api/v1alpha1"
+	"twr.dev/imgswap/pkg/mapstore"
 
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	imgref "github.com/containers/image/docker/reference"
+	"github.com/google/go-containerregistry/pkg/name"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-// swapmaplog is for logging in this package.
-var swapmaplog = logf.Log.WithName("pod-imgswap-webhook")
+const (
+	DefaultTypeString = "default"
+	ExactTypeString   = "exact"
+	ReplaceTypeString = "replace"
+)
+
+var (
+	// swapmaplog is for logging in this package.
+	swapmaplog = logf.Log.WithName("pod-imgswap-webhook").V(1)
+)
 
 // ImageSwapConfig is a struct that holds the configuration for the ImageSwap webhook
 type ImageSwapConfig struct {
@@ -30,8 +40,9 @@ type ImageSwapConfig struct {
 
 // PodImageSwapHandler is a struct that holds the configuration for the ImageSwap webhook Handler
 type PodImageSwapHandler struct {
-	Client  client.Client
-	Decoder *admission.Decoder
+	Client   client.Client
+	Decoder  *admission.Decoder
+	MapStore *mapstore.MapStore
 }
 
 // Check if our PodImageSwapper implements necessary interface
@@ -90,13 +101,13 @@ func (piswh *PodImageSwapHandler) Handle(ctx context.Context, req admission.Requ
 	} else {
 		if workloadType == "Pod" {
 			for _, container := range podPatched.Spec.Containers {
-				swapmaplog.Info("Processing Container", "pod", workloadName, "container", container.Name)
-				needsPatch = swapImage(&container) || needsPatch
+				swapmaplog.Info("Processing Container", "pod", workloadName, "container", container.Name, "image", container.Image)
+				needsPatch = swapImage(&container, *piswh.MapStore) || needsPatch
 			}
 
 			for _, container := range podPatched.Spec.InitContainers {
-				swapmaplog.Info("Processing Init Container", "pod", workloadName, "container", container.Name)
-				needsPatch = swapImage(&container) || needsPatch
+				swapmaplog.Info("Processing Init Container", "pod", workloadName, "container", container.Name, "image", container.Image)
+				needsPatch = swapImage(&container, *piswh.MapStore) || needsPatch
 			}
 		} else {
 			swapmaplog.Info("Invalid workload type", "type", workloadType)
@@ -138,14 +149,44 @@ func (pisw *PodImageSwapHandler) InjectDecoder(d *admission.Decoder) error {
 }
 
 // swapImage is a function that performs an imageswap for a container spec
-func swapImage(container *corev1.Container) bool {
-	splitImage, err := splitImage(container.Image)
+func swapImage(container *corev1.Container, swapMaps mapstore.MapStore) bool {
+
+	var newImage string
+	oldImage := container.Image
+
+	parsedImage, err := name.ParseReference(container.Image)
 	if err != nil {
-		swapmaplog.Error(err, "Error splitting image")
+		err = fmt.Errorf("error parsing image: %v", err)
+		swapmaplog.Error(err, "Error parsing image")
 		return false
 	}
-	swapmaplog.Info("Split Image", "image", splitImage)
-	return false
+
+	// Check for match in swapMaps
+	matchedMap, found := findMap(parsedImage, swapMaps)
+
+	if found {
+		// Swap image
+		newImage, err = matchedMap.GetSwap(swapmaplog, parsedImage)
+		if err != nil {
+			err = fmt.Errorf("error swapping image: %v", err)
+			swapmaplog.Error(err, "Error swapping image")
+			return false
+		}
+
+		// Update container image
+		if matchedMap != nil {
+			fmt.Printf("/nBefore container image update: %v\n", container.Image)
+			container.Image = newImage
+			fmt.Printf("After container image update: %v\n", container.Image)
+		}
+	} else {
+		swapmaplog.Info("No Map found")
+		return false
+	}
+
+	swapmaplog.Info("Swapped image", "old", oldImage, "new", newImage)
+
+	return true
 }
 
 // splitImage is a function that splits an image string into a SwapRef
@@ -159,31 +200,75 @@ func splitImage(image string) (v1alpha1.SwapRef, error) {
 
 	swapmaplog.Info("Got to image split")
 
-	parsedImage, err := imgref.ParseNormalizedNamed(image)
+	parsedImage, err := name.ParseReference(image)
 	if err != nil {
 		err := fmt.Errorf("error parsing image: %v", err)
 		return v1alpha1.SwapRef{}, err
 	}
-
-	//imageRef, err := imgref.Parse(image)
-	if err != nil {
-		err := fmt.Errorf("error parsing image: %v", err)
-		return v1alpha1.SwapRef{}, err
-	}
-
-	imageRegistry = imgref.Domain(parsedImage)
-	imagePath = imgref.Path(parsedImage)
-	tagged, ok := parsedImage.(imgref.Tagged)
-	if ok {
-		imageTag = tagged.Tag()
-
-	} else {
-		imageTag = ""
-	}
-	swapmaplog.Info("Image Registry", "registry", imageRegistry, "path", imagePath, "tag", imageTag)
+	imageRegistry = parsedImage.Context().RegistryStr()
+	imagePath = parsedImage.Context().RepositoryStr()
+	imageTag = parsedImage.Identifier()
+	imageProjectSections := strings.Split(imagePath, "/")
 
 	newSwapRef.Registry = imageRegistry
-	newSwapRef.Project = imagePath
+	newSwapRef.Project = strings.Join(imageProjectSections[0:len(imageProjectSections)-1], "/")
+	newSwapRef.Image = imageProjectSections[len(imageProjectSections)-1]
+	newSwapRef.Tag = imageTag
+
+	swapmaplog.Info("Image Registry", "registry", newSwapRef.Registry, "project", newSwapRef.Project, "image", newSwapRef.Image, "tag", newSwapRef.Tag)
 
 	return newSwapRef, nil
+}
+
+// findMap is a function that finds a Map in a MapStore based on a specified image string
+func findMap(image name.Reference, swapMaps mapstore.MapStore) (*v1alpha1.Map, bool) {
+	matchedMap := &v1alpha1.Map{}
+	found := false
+
+	swapmaplog.Info("Finding Map", "image-context-name", image.Context().Name())
+
+	// Split image string into SwapRef
+	imageRef, err := splitImage(image.String())
+	if err != nil {
+		swapmaplog.Error(err, "Error splitting image")
+		return matchedMap, found
+	}
+
+	// Check for exact image match in swapMaps
+	if tmpMap, ok := swapMaps.Get(image.String()); ok {
+		found = true
+		matchedMap = tmpMap
+		swapmaplog.Info("Found exact mapping", "image", image.String())
+		return matchedMap, found
+		// Check for Image match in swapMaps
+	} else if tmpMap, ok := swapMaps.Get(imageRef.Registry + "/" + imageRef.Project + "/" + imageRef.Image); ok {
+		found = true
+		matchedMap = tmpMap
+		swapmaplog.Info("Found Image mapping", "image", image.String())
+		return matchedMap, found
+		// Check for Project match in swapMaps
+	} else if tmpMap, ok := swapMaps.Get(imageRef.Registry + "/" + imageRef.Project); ok {
+		found = true
+		matchedMap = tmpMap
+		swapmaplog.Info("Found Project mapping", "image", image.String())
+		return matchedMap, found
+		// Check for Registry only match in swapMaps
+	} else if tmpMap, ok := swapMaps.Get(imageRef.Registry); ok {
+		found = true
+		matchedMap = tmpMap
+		swapmaplog.Info("Found Registry mapping", "image", image.String())
+		return matchedMap, found
+		// Check if port in Registry and check for No port in swapMaps
+	} else if strings.Contains(imageRef.Image, ":") {
+		registryNoPort := strings.Split(imageRef.Registry, ":")[0]
+		if tmpMap, ok := swapMaps.Get(registryNoPort); ok {
+			found = true
+			matchedMap = tmpMap
+			swapmaplog.Info("Found Registry mapping", "image", image.String())
+			return matchedMap, found
+		}
+	}
+
+	return matchedMap, found
+
 }
